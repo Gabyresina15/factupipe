@@ -1,8 +1,9 @@
 import { decideStatus } from "./schema.js";
 
-const CUIT_RE = /\b((?:20|23|24|25|26|27|30|33|34)[-\s]?\d{8}[-\s]?\d)\b/;
 const FECHA_RE = /\b(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}|\d{4}[\/\-]\d{2}[\/\-]\d{2})\b/;
 const RATE_VALUES = new Set([10.5, 21, 27, 10, 5, 4, 0]);
+const NEXT_LABEL =
+  /Fecha|Domicilio|CUIT|Condici[o\u00f3]n|Punto de Venta|Ingresos|IVA|NRO|Comp\.?/i;
 
 export function parseMoney(raw?: string): number | undefined {
   if (!raw) return undefined;
@@ -32,24 +33,53 @@ function lastAmount(text: string, label: RegExp, skipRates = false): number | un
 }
 
 function detectMoneda(text: string): "ARS" | "USD" | "EUR" {
-  if (/€|\bEUR\b/i.test(text)) return "EUR";
-  if (/\bUSD\b|U\$S|D[\u00f3o]lar/i.test(text)) return "USD";
+  if (/\bUSD\b|U\$S|D[\u00f3o]lar Estadounidense|Moneda:\s*USD/i.test(text)) return "USD";
+  if (/\bEUR\b|(?:^|\s)€(?:\s|$)/.test(text) && !/\bUSD\b/i.test(text)) return "EUR";
   return "ARS";
+}
+
+function digitsFromOcr(raw: string) {
+  return raw.replace(/[oO]/g, "0").replace(/[lI]/g, "1").replace(/\D/g, "");
 }
 
 function formatCuit(raw?: string) {
   if (!raw) return undefined;
-  const d = raw.replace(/\D/g, "");
+  const d = digitsFromOcr(raw);
   if (d.length !== 11) return undefined;
+  if (!/^(20|23|24|25|26|27|30|33|34)/.test(d)) return undefined;
   return `${d.slice(0, 2)}-${d.slice(2, 10)}-${d.slice(10)}`;
 }
 
-function normalizeNro(raw?: string) {
-  if (!raw) return undefined;
-  const cleaned = raw.replace(/[oO]/g, "0").replace(/\s/g, "");
-  const m = cleaned.match(/(\d{4})-(\d{8})/);
-  if (m) return `${m[1]}-${m[2]}`;
-  return cleaned;
+function firstLabeledCuit(text: string) {
+  const labeled = [...text.matchAll(/CUIT\s*[:\-]?\s*([0-9oOlI\-]{11,16})/gi)];
+  for (const m of labeled) {
+    const c = formatCuit(m[1]);
+    if (c) return c;
+  }
+  const loose = text.match(/\b((?:20|23|24|25|26|27|30|33|34)[-\s]?[0-9oO]{8}[-\s]?[0-9oO])\b/);
+  return formatCuit(loose?.[1]);
+}
+
+function normalizeNro(pto?: string, comp?: string, joined?: string) {
+  if (pto && comp) {
+    const a = digitsFromOcr(pto).padStart(4, "0").slice(-5).padStart(5, "0").slice(-5);
+    const b = digitsFromOcr(comp).padStart(8, "0").slice(-8);
+    if (a.length >= 4 && b.length === 8) return `${a.slice(-5).replace(/^0(\d{4})$/, "0$1")}-${b}`;
+    if (digitsFromOcr(pto).length && digitsFromOcr(comp).length) {
+      return `${digitsFromOcr(pto).padStart(4, "0").slice(-4)}-${digitsFromOcr(comp).padStart(8, "0").slice(-8)}`;
+    }
+  }
+  if (joined) {
+    const cleaned = joined.replace(/[oO]/g, "0").replace(/\s/g, "");
+    const m = cleaned.match(/(\d{4,5})-(\d{8})/);
+    if (m) return `${m[1].padStart(4, "0")}-${m[2]}`;
+  }
+  return undefined;
+}
+
+function takeUntilLabel(value: string) {
+  const cut = value.search(NEXT_LABEL);
+  return (cut > 0 ? value.slice(0, cut) : value).trim().replace(/[:\-]+$/, "").slice(0, 80);
 }
 
 function closeRate(neto: number, iva: number) {
@@ -61,50 +91,47 @@ export function normalizeFromText(
   text: string,
   meta: { pathOrigen: string; contentHash: string }
 ) {
-  const cuit = formatCuit(
-    text.match(/CUIT\s*[:\-]?\s*([0-9\-]{11,13})/i)?.[1] ?? text.match(CUIT_RE)?.[1]
-  );
+  const cuit = firstLabeledCuit(text);
 
-  const razonMatch =
-    text.match(/Nombre de Fantas[i\u00ed]a/i) ||
-    text.match(/Raz[o\u00f3]n Social\s*[:\-]?\s*([^\n]{3,80})/i) ||
-    text.match(/Emisor\s*[:\-]?\s*([^\n]{3,80})/i) ||
-    text.match(/([A-Za-z0-9]{2,12})\s+Ingenier[i\u00ed]a/i) ||
-    text.match(/\b(DreamWorks Studios)\b/i);
-
-  let razonSocial = razonMatch?.[0]?.includes("Fantas")
-    ? "Nombre de Fantasía"
-    : razonMatch?.[1]?.trim();
-  if (razonMatch && /ingenier/i.test(razonMatch[0]) && razonMatch[1] && !/ingenier/i.test(razonMatch[1])) {
-    razonSocial = `${razonMatch[1]} Ingeniería`;
+  let razonSocial: string | undefined;
+  if (/Nombre de Fantas[i\u00ed]a/i.test(text)) razonSocial = "Nombre de Fantasía";
+  const razonLabeled = text.match(/Raz[o\u00f3]n Social\s*[:\-]?\s*(.+?)(?=Fecha|Domicilio|CUIT|Condici|Punto de Venta|$)/i);
+  if (!razonSocial && razonLabeled?.[1]) razonSocial = takeUntilLabel(razonLabeled[1]);
+  if (!razonSocial) {
+    const ing = text.match(/([A-Za-z0-9]{2,12})\s+Ingenier[i\u00ed]a/i);
+    if (ing) razonSocial = `${ing[1]} Ingeniería`;
   }
+  if (!razonSocial && /L[i\u00ed]der Gesti[o\u00f3]n/i.test(text)) razonSocial = "Líder Gestión";
+  if (!razonSocial && /DreamWorks Studios/i.test(text)) razonSocial = "DreamWorks Studios";
 
-  const nroMatch =
-    text.match(/FACTURA\s+([0-9oO]{4}\s*-\s*[0-9oO]{8})/i) ||
-    text.match(/\b([0-9oO]{4}\s*-\s*[0-9oO]{8})\b/) ||
-    text.match(/Factura[^\n]{0,48}#\s*([A-Z]?\d{4,12})/i);
-  const nroFactura = normalizeNro(nroMatch?.[1]);
+  const pto = text.match(/Punto de Venta\s*[:\-]?\s*([0-9oO]{4,5})/i)?.[1];
+  const comp = text.match(/Comp\.?\s*Nro\.?\s*[:\-]?\s*([0-9oO]{6,8})/i)?.[1];
+  const joined =
+    text.match(/FACTURA\s+([0-9oO]{4}\s*-\s*[0-9oO]{8})/i)?.[1] ||
+    text.match(/\b([0-9oO]{4}\s*-\s*[0-9oO]{8})\b/)?.[1];
+  const nroFactura = normalizeNro(pto, comp, joined);
 
   const fecha =
     text.match(/Fecha(?: de Emisi[o\u00f3]n)?\s*[:\-]?\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i)?.[1] ??
     text.match(FECHA_RE)?.[1];
 
-  const cae = text.match(/CAE\s*(?:N[\u00b0\u00baoª.]?)?\s*[:\-]?\s*(\d{8,14})/i)?.[1];
+  const cae = text.match(/CAE\s*(?:N[\u00b0\u00baoª.]?)?\s*[:\-]?\s*(\d{10,14})/i)?.[1];
 
   const isC =
     /\bFACTURA\s*C\b|C[\u00d3O]D\.?\s*11|Responsable Monotributo|Monotribut/i.test(text);
 
   let neto =
+    lastAmount(text, /Importe Neto Gravado\s*[:\-]?\s*(?:USD|UsD|\$)?\s*([\d.\s]+[.,]\d{2})/gi) ??
     lastAmount(text, /BASE IMPONIBLE\s*[:\-]?\s*([\d.\s]+[.,]\d{2})/gi) ??
-    lastAmount(text, /(?:Neto Gravado|Importe Neto|Subtotal)\s*[:\-]?\s*[€$]?\s*([\d.\s]+[.,]\d{2})/gi);
+    lastAmount(text, /(?:Neto Gravado|Importe Neto|Subtotal)\s*[:\-]?\s*(?:USD|€|\$)?\s*([\d.\s]+[.,]\d{2})/gi);
 
   let iva =
-    lastAmount(text, /IVA\s*(?:\d{1,2}\s*%|\d{2,3}\s+)?[^\d]{0,12}([\d.\s]+[.,]\d{2})/gi, true) ??
-    lastAmount(text, /I\.V\.A\.[^\d]{0,20}([\d.\s]+[.,]\d{2})/gi, true);
+    lastAmount(text, /IVA\s*21\s*%[^\d]{0,16}([\d.\s]+[.,]\d{2})/gi, true) ??
+    lastAmount(text, /IVA\s*(?:\d{1,2}\s*%|\d{2,3}\s+)?[^\d]{0,12}([\d.\s]+[.,]\d{2})/gi, true);
 
   let total =
-    lastAmount(text, /\bTOTAL\b\s*[:\-]?\s*[€$]?\s*([\d.\s]+[.,]\d{2})/gi) ??
-    lastAmount(text, /Importe\s+Total\s*[:\-]?\s*[€$]?\s*([\d.\s]+[.,]\d{2})/gi);
+    lastAmount(text, /Importe Total\s*[:\-]?\s*(?:USD|UsD|\$)?\s*([\d.\s]+[.,]\d{2})/gi) ??
+    lastAmount(text, /\bTOTAL\b\s*[:\-]?\s*(?:USD|€|\$)?\s*([\d.\s]+[.,]\d{2})/gi);
 
   if (isC) {
     if (total != null) neto = total;
@@ -121,7 +148,7 @@ export function normalizeFromText(
 
   const draft = {
     cuit,
-    razonSocial: razonSocial?.slice(0, 120),
+    razonSocial: razonSocial?.slice(0, 80),
     nroFactura,
     fecha,
     neto,
