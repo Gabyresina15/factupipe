@@ -1,36 +1,28 @@
-import { decideStatus, KEY_FIELDS } from "./schema.js";
+import { decideStatus } from "./schema.js";
 import { completeJson, qvacReady, initQvac } from "./qvac.js";
 
 function asNum(v: unknown): number | undefined {
   if (typeof v === "number" && Number.isFinite(v)) return v;
   if (typeof v === "string") {
-    const n = Number(v.replace(/\s/g, "").replace(",", "."));
+    const n = Number(v.replace(/[^0-9,.-]/g, "").replace(",", "."));
     return Number.isFinite(n) ? n : undefined;
   }
   return undefined;
 }
 
 function asStr(v: unknown): string | undefined {
-  if (typeof v === "string" && v.trim() && v !== "null") return v.trim();
+  if (typeof v === "string" && v.trim() && v.toLowerCase() !== "null") return v.trim();
   return undefined;
 }
 
 function buildPrompt(rawText: string) {
-  return `Factura. Responde SOLO un objeto JSON, nada mas.
-Formato exacto:
-{"cuit":null,"razonSocial":"","nroFactura":"","fecha":"","neto":0,"iva":0,"total":0,"moneda":"EUR"}
-Moneda: EUR si hay euro, USD si hay dolar, si no ARS.
-Numeros con punto decimal. cuit null si no es Argentina.
+  return `Analiza este texto extraído de una factura. Devuelve ÚNICAMENTE un JSON válido con las claves "merchantName" (nombre del comercio) y "totalAmount" (el total numérico).
 
 TEXTO:
-${rawText.slice(0, 2800)}`;
+${rawText}`;
 }
 
 export async function maybeEnrichWithLlm(rules: Record<string, unknown>) {
-  const missing = KEY_FIELDS.some((k) => rules[k] == null || rules[k] === "");
-  const needLlm = rules.status === "partial" || rules.status === "failed" || missing;
-  if (!needLlm) return { ...rules, extraction: "rules" };
-
   const raw = String(rules.rawText ?? "");
   if (!raw.trim()) return { ...rules, extraction: "rules" };
 
@@ -42,16 +34,18 @@ export async function maybeEnrichWithLlm(rules: Record<string, unknown>) {
       return { ...rules, extraction: "rules" };
     }
 
+    const merchant = asStr(parsed.merchantName ?? parsed.razonSocial);
+    const llmTotal = asNum(parsed.totalAmount ?? parsed.total);
+
+    const iva = typeof rules.iva === "number" && typeof rules.total === "number" && rules.iva > Number(rules.total)
+      ? undefined
+      : rules.iva;
+
     const merged = {
       ...rules,
-      cuit: rules.cuit ?? asStr(parsed.cuit),
-      razonSocial: rules.razonSocial ?? asStr(parsed.razonSocial),
-      nroFactura: rules.nroFactura ?? asStr(parsed.nroFactura),
-      fecha: rules.fecha ?? asStr(parsed.fecha),
-      neto: rules.neto ?? asNum(parsed.neto),
-      iva: rules.iva ?? asNum(parsed.iva),
-      total: rules.total ?? asNum(parsed.total),
-      moneda: rules.moneda ?? asStr(parsed.moneda) ?? "ARS",
+      iva,
+      razonSocial: rules.razonSocial ?? merchant,
+      total: llmTotal ?? rules.total,
       extraction: "hybrid",
     };
     return { ...merged, status: decideStatus(merged) };
