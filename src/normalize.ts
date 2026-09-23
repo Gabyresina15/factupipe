@@ -8,6 +8,7 @@ const NEXT_LABEL =
 export function parseMoney(raw?: string): number | undefined {
   if (!raw) return undefined;
   const s = raw
+    .replace(/[oO]/g, "0")
     .replace(/[€$£]/g, "")
     .replace(/\b(?:EUR|USD|ARS|PESOS?)\b/gi, "")
     .replace(/\s/g, "")
@@ -39,7 +40,7 @@ function detectMoneda(text: string): "ARS" | "USD" | "EUR" {
 }
 
 function digitsFromOcr(raw: string) {
-  return raw.replace(/[oO]/g, "0").replace(/[lI]/g, "1").replace(/\D/g, "");
+  return raw.replace(/[oO]/g, "0").replace(/[cC]/g, "0").replace(/[lI]/g, "1").replace(/\D/g, "");
 }
 
 function formatCuit(raw?: string) {
@@ -51,28 +52,24 @@ function formatCuit(raw?: string) {
 }
 
 function firstLabeledCuit(text: string) {
-  const labeled = [...text.matchAll(/CUIT\s*[:\-]?\s*([0-9oOlI\-]{11,16})/gi)];
+  const labeled = [...text.matchAll(/CUIT\s*[:\-]?\s*([0-9oOlIcC\-]{11,16})/gi)];
   for (const m of labeled) {
     const c = formatCuit(m[1]);
     if (c) return c;
   }
-  const loose = text.match(/\b((?:20|23|24|25|26|27|30|33|34)[-\s]?[0-9oO]{8}[-\s]?[0-9oO])\b/);
-  return formatCuit(loose?.[1]);
+  return undefined;
 }
 
 function normalizeNro(pto?: string, comp?: string, joined?: string) {
   if (pto && comp) {
-    const a = digitsFromOcr(pto).padStart(4, "0").slice(-5).padStart(5, "0").slice(-5);
+    const a = digitsFromOcr(pto).padStart(4, "0").slice(-5);
     const b = digitsFromOcr(comp).padStart(8, "0").slice(-8);
-    if (a.length >= 4 && b.length === 8) return `${a.slice(-5).replace(/^0(\d{4})$/, "0$1")}-${b}`;
-    if (digitsFromOcr(pto).length && digitsFromOcr(comp).length) {
-      return `${digitsFromOcr(pto).padStart(4, "0").slice(-4)}-${digitsFromOcr(comp).padStart(8, "0").slice(-8)}`;
-    }
+    if (b.length === 8) return `${a.slice(-5)}-${b}`;
   }
   if (joined) {
     const cleaned = joined.replace(/[oO]/g, "0").replace(/\s/g, "");
     const m = cleaned.match(/(\d{4,5})-(\d{8})/);
-    if (m) return `${m[1].padStart(4, "0")}-${m[2]}`;
+    if (m) return `${m[1]}-${m[2]}`;
   }
   return undefined;
 }
@@ -115,15 +112,15 @@ export function normalizeFromText(
     text.match(/Fecha(?: de Emisi[o\u00f3]n)?\s*[:\-]?\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i)?.[1] ??
     text.match(FECHA_RE)?.[1];
 
-  const cae = text.match(/CAE\s*(?:N[\u00b0\u00baoª.]?)?\s*[:\-]?\s*(\d{10,14})/i)?.[1];
+  const cae = text.match(/CAE[^0-9]{0,16}(\d{10,14})/i)?.[1];
 
   const isC =
     /\bFACTURA\s*C\b|C[\u00d3O]D\.?\s*11|Responsable Monotributo|Monotribut/i.test(text);
 
   let neto =
-    lastAmount(text, /Importe Neto Gravado\s*[:\-]?\s*(?:USD|UsD|\$)?\s*([\d.\s]+[.,]\d{2})/gi) ??
+    lastAmount(text, /Importe Neto Gravado\s*[:\-]?\s*(?:USD|UsD|\$)?\s*([0-9oO.\s]+[.,][0-9oO]{2})/gi) ??
     lastAmount(text, /BASE IMPONIBLE\s*[:\-]?\s*([\d.\s]+[.,]\d{2})/gi) ??
-    lastAmount(text, /(?:Neto Gravado|Importe Neto|Subtotal)\s*[:\-]?\s*(?:USD|€|\$)?\s*([\d.\s]+[.,]\d{2})/gi);
+    lastAmount(text, /(?:Neto Gravado|Importe Neto|Subtotal)\s*[:\-]?\s*(?:USD|€|\$)?\s*([0-9oO.\s]+[.,][0-9oO]{2})/gi);
 
   let iva =
     lastAmount(text, /IVA\s*21\s*%[^\d]{0,16}([\d.\s]+[.,]\d{2})/gi, true) ??
