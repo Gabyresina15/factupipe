@@ -104,6 +104,40 @@ export async function ocrImage(imagePath: string): Promise<string> {
   }
 }
 
+export function extractJsonObject(raw: string): Record<string, unknown> | null {
+  const cleaned = raw
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/```(?:json)?/gi, "")
+    .trim();
+
+  const start = cleaned.indexOf("{");
+  if (start < 0) return null;
+
+  let depth = 0;
+  for (let i = start; i < cleaned.length; i++) {
+    const ch = cleaned[i];
+    if (ch === "{") depth++;
+    if (ch === "}") depth--;
+    if (depth === 0) {
+      const slice = cleaned.slice(start, i + 1);
+      try {
+        return JSON.parse(slice) as Record<string, unknown>;
+      } catch {
+        try {
+          const repaired = slice
+            .replace(/,\s*}/g, "}")
+            .replace(/,\s*]/g, "]")
+            .replace(/[\u201c\u201d]/g, '"');
+          return JSON.parse(repaired) as Record<string, unknown>;
+        } catch {
+          return null;
+        }
+      }
+    }
+  }
+  return null;
+}
+
 export async function completeJson(prompt: string): Promise<Record<string, unknown> | null> {
   if (!llmModelId) await initQvac();
   if (!llmModelId) return null;
@@ -114,7 +148,7 @@ export async function completeJson(prompt: string): Promise<Record<string, unkno
       modelId: llmModelId!,
       history,
       stream: true,
-      maxTokens: 256,
+      maxTokens: 320,
     });
 
     let full = "";
@@ -122,13 +156,10 @@ export async function completeJson(prompt: string): Promise<Record<string, unkno
       full += token;
     }
 
-    const cleaned = full.replace(/<think>[\s\S]*?<\/think>/g, "");
-    const match = cleaned.match(/\{[\s\S]*\}/);
-    if (!match) return null;
-    try {
-      return JSON.parse(match[0]) as Record<string, unknown>;
-    } catch {
-      return null;
+    const parsed = extractJsonObject(full);
+    if (!parsed) {
+      console.error("[QVAC LLM] raw:", full.slice(0, 500));
     }
+    return parsed;
   });
 }

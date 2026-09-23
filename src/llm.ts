@@ -1,13 +1,29 @@
 import { decideStatus, KEY_FIELDS } from "./schema.js";
 import { completeJson, qvacReady, initQvac } from "./qvac.js";
 
+function asNum(v: unknown): number | undefined {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string") {
+    const n = Number(v.replace(/\s/g, "").replace(",", "."));
+    return Number.isFinite(n) ? n : undefined;
+  }
+  return undefined;
+}
+
+function asStr(v: unknown): string | undefined {
+  if (typeof v === "string" && v.trim() && v !== "null") return v.trim();
+  return undefined;
+}
+
 function buildPrompt(rawText: string) {
-  return `Analiza este texto extraído de una factura argentina.
-Devuelve ÚNICAMENTE un JSON válido con estas claves:
-cuit (formato NN-NNNNNNNN-N), razonSocial, nroFactura, fecha, neto (número), iva (número), total (número), moneda (ARS o USD).
+  return `Factura. Responde SOLO un objeto JSON, nada mas.
+Formato exacto:
+{"cuit":null,"razonSocial":"","nroFactura":"","fecha":"","neto":0,"iva":0,"total":0,"moneda":"EUR"}
+Moneda: EUR si hay euro, USD si hay dolar, si no ARS.
+Numeros con punto decimal. cuit null si no es Argentina.
 
 TEXTO:
-${rawText.slice(0, 3500)}`;
+${rawText.slice(0, 2800)}`;
 }
 
 export async function maybeEnrichWithLlm(rules: Record<string, unknown>) {
@@ -28,14 +44,14 @@ export async function maybeEnrichWithLlm(rules: Record<string, unknown>) {
 
     const merged = {
       ...rules,
-      cuit: rules.cuit ?? parsed.cuit,
-      razonSocial: rules.razonSocial ?? parsed.razonSocial,
-      nroFactura: rules.nroFactura ?? parsed.nroFactura,
-      fecha: rules.fecha ?? parsed.fecha,
-      neto: rules.neto ?? parsed.neto,
-      iva: rules.iva ?? parsed.iva,
-      total: rules.total ?? parsed.total,
-      moneda: rules.moneda ?? parsed.moneda ?? "ARS",
+      cuit: rules.cuit ?? asStr(parsed.cuit),
+      razonSocial: rules.razonSocial ?? asStr(parsed.razonSocial),
+      nroFactura: rules.nroFactura ?? asStr(parsed.nroFactura),
+      fecha: rules.fecha ?? asStr(parsed.fecha),
+      neto: rules.neto ?? asNum(parsed.neto),
+      iva: rules.iva ?? asNum(parsed.iva),
+      total: rules.total ?? asNum(parsed.total),
+      moneda: rules.moneda ?? asStr(parsed.moneda) ?? "ARS",
       extraction: "hybrid",
     };
     return { ...merged, status: decideStatus(merged) };
