@@ -1,26 +1,17 @@
 # FACTUPIPE.md
 
-Scope: PDF factura → JSON → Mongo. Node/TS · pdf-parse · LLM solo PDFs sucios.
+Motor: **QVAC local** (OCR_LATIN + Llama 3.2 1B) como en el backend del hackathon.
+Arquitectura: rules-first + upsert hash. UI mínima de carga. AFIP live sigue afuera (validación fiscal ≠ extraer campos).
 
-OUT: AFIP live, UI pesada, multi-empresa, OCR GPU, WhatsApp.
+## Pipeline
 
-## Contrato
-
-cuit | razonSocial | nroFactura | fecha | neto | iva | total | moneda | pathOrigen | contentHash | createdAt
-+ status complete|partial|failed
-+ extraction rules|llm|hybrid
-+ ingestCount | updatedAt | rawText
+archivo → extract (pdf-parse | qvac-ocr) → normalize regex → si partial: qvac completion → upsert Mongo
 
 ## Tracking
 
 | Slice | Estado |
 |-------|--------|
-| 0 Inventario | DONE |
-| 1 Scaffold + health | DONE |
-| 2 Ingest 1 PDF | DONE |
-| 3 Normalizer reglas | DONE |
-| 4 Hash + upsert | DONE |
-| 5 List/GET | DONE |
-| 6 LLM solo sucios | DONE |
-| 7 Watcher | DONE |
-| 8 Demo pack | DONE (falta que cargues ≥10 PDFs en samples/) |
+| 0-5 + 7-8 | DONE |
+| 6 LLM | DONE — QVAC local, cloud opcional |
+| OCR imagen | DONE — mismo SDK que ai-service.js |
+| UI carga | DONE — GET / + POST /api/upload |

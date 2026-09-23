@@ -1,58 +1,60 @@
 # FactuPipe
 
-MVP: PDF de factura argentina → texto (`pdf-parse`) → regex/Zod → MongoDB.
-LLM HTTP **solo** si el extractor de reglas queda `partial`/`failed`.
+Pipeline local para facturas argentinas.
 
-No hay OCR GPU. No hay AFIP. No hay UI.
+1. **PDF nativo** → `pdf-parse`
+2. **Foto / PDF sucio** → OCR QVAC (mismo motor que tu `ai-service.js`, RTX)
+3. **Campos** → regex + Zod (CUIT, nro, fechas, totales AR)
+4. **Huecos** → Llama 3.2 1B **local** via `@qvac/sdk` (cloud solo si QVAC no arranca y hay `LLM_API_KEY`)
+5. **Mongo** upsert por `contentHash` sha256
+
+UI mínima en `GET /` para subir PDF o imagen.
 
 ## Setup
 
 ```bash
 git clone https://github.com/Gabyresina15/factupipe.git
 cd factupipe
+git pull
 cp .env.example .env
-# editá MONGODB_URI si hace falta
 npm install
 ```
 
-Mongo local:
+Mongo local + GPU con drivers que QVAC ya te andaba en el hackathon.
 
 ```bash
-# ejemplo
-mongod --dbpath /data/db
-npm run health
-# OK Mongo
+npm run health    # mongo + flag qvac
+npm run dev       # http://localhost:3000  (carga OCR+LLM al boot)
 ```
 
-## Comandos
+Primera corrida QVAC descarga pesos. Después quedan cacheados.
+
+## Flujo
 
 ```bash
-npm run health
-npm run ingest -- ./samples/tu-factura.pdf
+npm run ingest -- ./samples/factura.pdf
+npm run ingest -- ./uploads/foto.jpg
 npm run list
-npm run dev          # HTTP :3000
-npm run watch        # inbox/ → processed/ | failed/
-npm run demo         # batch samples/ + métrica
+npm run watch     # inbox/ → processed|failed
+npm run demo
 ```
 
 HTTP:
 
-- `GET /health`
-- `POST /ingest` `{ "path": "./samples/x.pdf" }`
-- `GET /invoices?limit=50`
+- `GET /` UI carga
+- `POST /api/upload` multipart campo `factura`
+- `POST /ingest` `{ "path": "./archivo.pdf" }`
+- `GET /invoices?limit=`
 - `GET /invoices/:id`
+- `GET /health` `{ mongo, qvac }`
 
-## Demo d7
+Apagar local: `QVAC_ENABLED=0` en `.env`.
 
-1. Copiá ≥10 PDFs texto-nativo a `./samples`.
-2. `npm run demo`
-3. Sale: `procesados=N clave>=80%=X% ms=T facturas/min=Y`
+## Idempotencia
 
-Idempotencia: el mismo PDF dos veces no duplica (`contentHash` sha256, `ingestCount++`).
+Mismo archivo 2 veces → 1 documento, `ingestCount++`.
 
-## Limitaciones
+## Qué no es
 
-- PDFs escaneados / foto → `failed` (fuera de scope: OCR).
-- Regex cubre facturas AR típicas (CUIT, nro PPPP-NNNNNNNN, totales con coma).
-- LLM es opcional (`LLM_API_KEY`). Sin key, solo reglas.
-- No valida CAE contra ARCA.
+No pega a ARCA/AFIP a validar CAE. Extrae el PDF/foto y lo persiste.
+Si querés esa capa, es otro slice después del MVP de extracción.

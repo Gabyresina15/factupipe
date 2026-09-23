@@ -14,6 +14,7 @@ const schema = new mongoose.Schema(
     contentHash: { type: String, required: true, unique: true, index: true },
     status: { type: String, enum: ["complete", "partial", "failed"], required: true },
     extraction: { type: String, enum: ["rules", "llm", "hybrid"], required: true },
+    extractSource: { type: String, enum: ["pdf-parse", "qvac-ocr", "empty"] },
     rawText: String,
     ingestCount: { type: Number, default: 1 },
   },
