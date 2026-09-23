@@ -14,6 +14,23 @@ import { tmpdir } from "node:os";
 let ocrModelId: string | null = null;
 let llmModelId: string | null = null;
 let loading: Promise<void> | null = null;
+let chain: Promise<unknown> = Promise.resolve();
+
+function exclusive<T>(fn: () => Promise<T>): Promise<T> {
+  const run = chain.then(fn, fn);
+  chain = run.then(
+    () => undefined,
+    () => undefined
+  );
+  return run;
+}
+
+function isStale(e: unknown) {
+  const msg = e instanceof Error ? e.message : String(e);
+  return /stale job replaced by new run/i.test(msg);
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export function qvacReady() {
   return Boolean(ocrModelId && llmModelId);
@@ -53,16 +70,35 @@ export async function initQvac() {
   }
 }
 
+async function runOcrOnce(cleanJpg: string): Promise<string> {
+  if (!ocrModelId) throw new Error("OCR QVAC no listo");
+  const { blocks } = ocr({ modelId: ocrModelId, image: cleanJpg });
+  const textBlocks = await blocks;
+  return textBlocks.map((b: { text?: string }) => b.text ?? "").join(" ").trim();
+}
+
 export async function ocrImage(imagePath: string): Promise<string> {
   if (!ocrModelId) await initQvac();
   if (!ocrModelId) throw new Error("OCR QVAC no listo");
 
-  const clean = path.join(tmpdir(), `factupipe-${Date.now()}.jpg`);
+  const clean = path.join(tmpdir(), `factupipe-${Date.now()}-${Math.random().toString(16).slice(2)}.jpg`);
+  await sharp(imagePath).rotate().jpeg({ quality: 92 }).toFile(clean);
+
   try {
-    await sharp(imagePath).jpeg({ quality: 90 }).toFile(clean);
-    const { blocks } = ocr({ modelId: ocrModelId, image: clean });
-    const textBlocks = await blocks;
-    return textBlocks.map((b: { text?: string }) => b.text ?? "").join(" ").trim();
+    return await exclusive(async () => {
+      let lastErr: unknown;
+      for (let i = 0; i < 3; i++) {
+        try {
+          return await runOcrOnce(clean);
+        } catch (e) {
+          lastErr = e;
+          if (!isStale(e) || i === 2) break;
+          console.warn("[QVAC OCR] job pisado, reintento", i + 1);
+          await sleep(400 * (i + 1));
+        }
+      }
+      throw lastErr;
+    });
   } finally {
     await unlink(clean).catch(() => undefined);
   }
@@ -72,25 +108,27 @@ export async function completeJson(prompt: string): Promise<Record<string, unkno
   if (!llmModelId) await initQvac();
   if (!llmModelId) return null;
 
-  const history = [{ role: "user" as const, content: prompt }];
-  const result = completion({
-    modelId: llmModelId,
-    history,
-    stream: true,
-    maxTokens: 256,
+  return exclusive(async () => {
+    const history = [{ role: "user" as const, content: prompt }];
+    const result = completion({
+      modelId: llmModelId!,
+      history,
+      stream: true,
+      maxTokens: 256,
+    });
+
+    let full = "";
+    for await (const token of result.tokenStream) {
+      full += token;
+    }
+
+    const cleaned = full.replace(/<think>[\s\S]*?<\/think>/g, "");
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    try {
+      return JSON.parse(match[0]) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
   });
-
-  let full = "";
-  for await (const token of result.tokenStream) {
-    full += token;
-  }
-
-  const cleaned = full.replace(/<think>[\s\S]*?<\/think>/g, "");
-  const match = cleaned.match(/\{[\s\S]*\}/);
-  if (!match) return null;
-  try {
-    return JSON.parse(match[0]) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
 }
