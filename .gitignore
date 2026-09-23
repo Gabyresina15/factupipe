@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+inbox/*
+!inbox/.gitkeep
+processed/*
+!processed/.gitkeep
+failed/*
+!failed/.gitkeep
+*.log
+.DS_Store
