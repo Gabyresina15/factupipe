@@ -8,6 +8,7 @@ const OVERWRITE = [
   "neto",
   "iva",
   "total",
+  "cae",
   "moneda",
   "status",
   "extraction",

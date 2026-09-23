@@ -9,6 +9,7 @@ const schema = new mongoose.Schema(
     neto: Number,
     iva: Number,
     total: Number,
+    cae: String,
     moneda: { type: String, default: "ARS" },
     pathOrigen: { type: String, required: true },
     contentHash: { type: String, required: true, unique: true, index: true },
