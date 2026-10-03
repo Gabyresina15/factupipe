@@ -6,7 +6,8 @@ import path from "node:path";
 import { mkdir } from "node:fs/promises";
 import { connectDb, pingDb } from "./db.js";
 import { InvoiceModel } from "./models/Invoice.js";
-import { ingestFile } from "./pipeline.js";
+import { JobModel } from "./models/Job.js";
+import { enqueueIngest, recoverStaleJobs } from "./jobs.js";
 import { initQvac, qvacReady } from "./qvac.js";
 import { homePage } from "./ui.js";
 
@@ -38,19 +39,25 @@ app.get("/health", async (_req, res) => {
 app.post("/ingest", async (req, res) => {
   const filePath = req.body?.path as string | undefined;
   if (!filePath) return res.status(400).json({ error: "Falta path" });
-  const result = await ingestFile(filePath);
-  res.json({ created: result.created, data: result.doc });
+  const result = await enqueueIngest(filePath);
+  res.json({ job: result.job, data: result.invoice });
 });
 
 app.post("/api/upload", upload.single("factura"), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "Falta archivo" });
   try {
-    const result = await ingestFile(req.file.path);
-    res.json({ created: result.created, data: result.doc });
+    const result = await enqueueIngest(req.file.path);
+    res.json({ job: result.job, data: result.invoice });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Error procesando el comprobante" });
   }
+});
+
+app.get("/jobs/:id", async (req, res) => {
+  const job = await JobModel.findById(req.params.id).lean();
+  if (!job) return res.status(404).json({ error: "not found" });
+  res.json(job);
 });
 
 app.get("/invoices", async (req, res) => {
@@ -68,6 +75,7 @@ app.get("/invoices/:id", async (req, res) => {
 const PORT = Number(process.env.PORT ?? 3000);
 
 await connectDb();
+await recoverStaleJobs();
 app.listen(PORT, async () => {
   console.log(`FactuPipe http://localhost:${PORT}`);
   if (process.env.QVAC_ENABLED !== "0") {

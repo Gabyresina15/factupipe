@@ -15,12 +15,20 @@ const OVERWRITE = [
   "extractSource",
   "rawText",
   "pathOrigen",
+  "warnings",
+  "tipoCambio",
+  "totalArs",
 ] as const;
 
 export async function upsertInvoice(doc: Record<string, unknown>) {
   const hash = String(doc.contentHash);
   const existing = await InvoiceModel.findOne({ contentHash: hash });
   if (existing) {
+    if (existing.status === "complete") {
+      existing.ingestCount = (existing.ingestCount ?? 1) + 1;
+      await existing.save();
+      return { doc: existing, created: false };
+    }
     for (const key of OVERWRITE) {
       if (doc[key] !== undefined) {
         (existing as unknown as Record<string, unknown>)[key] = doc[key];
