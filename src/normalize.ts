@@ -1,4 +1,5 @@
 import { decideStatus } from "./schema.js";
+import { formatCuit } from "./cuit.js";
 
 const FECHA_RE = /\b(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}|\d{4}[\/\-]\d{2}[\/\-]\d{2})\b/;
 const RATE_VALUES = new Set([10.5, 21, 27, 10, 5, 4, 0]);
@@ -9,7 +10,7 @@ export function parseMoney(raw?: string): number | undefined {
   if (!raw) return undefined;
   const s = raw
     .replace(/[oO]/g, "0")
-    .replace(/[€$£]/g, "")
+    .replace(/[\u20ac$£]/g, "")
     .replace(/\b(?:EUR|USD|ARS|PESOS?)\b/gi, "")
     .replace(/\s/g, "")
     .trim();
@@ -35,36 +36,25 @@ function lastAmount(text: string, label: RegExp, skipRates = false): number | un
 
 function detectMoneda(text: string): "ARS" | "USD" | "EUR" {
   if (/\bUSD\b|U\$S|D[\u00f3o]lar Estadounidense|Moneda:\s*USD/i.test(text)) return "USD";
-  if (/\bEUR\b|(?:^|\s)€(?:\s|$)/.test(text) && !/\bUSD\b/i.test(text)) return "EUR";
+  if (/\bEUR\b|(?:^|\s)\u20ac(?:\s|$)/.test(text) && !/\bUSD\b/i.test(text)) return "EUR";
   return "ARS";
 }
 
 function digitsFromOcr(raw: string) {
-  return raw.replace(/[oO]/g, "0").replace(/[cC]/g, "0").replace(/[lI]/g, "1").replace(/\D/g, "");
+  return raw.replace(/[oO]/g, "0").replace(/\D/g, "");
 }
 
-function formatCuit(raw?: string) {
-  if (!raw) return undefined;
-  const d = digitsFromOcr(raw);
-  if (d.length !== 11) return undefined;
-  if (!/^(20|23|24|25|26|27|30|33|34)/.test(d)) return undefined;
-  return `${d.slice(0, 2)}-${d.slice(2, 10)}-${d.slice(10)}`;
-}
-
-function firstLabeledCuit(text: string) {
+function firstLabeledCuit(text: string): { cuit?: string; warning?: "cuit_checksum" } {
   const labeled = [...text.matchAll(/CUIT\s*[:\-]?\s*([0-9oOlIcC\-]{11,16})/gi)];
-  for (const m of labeled) {
-    const c = formatCuit(m[1]);
-    if (c) return c;
-  }
-  return undefined;
+  if (labeled.length === 0) return {};
+  return formatCuit(labeled[0][1]);
 }
 
 function normalizeNro(pto?: string, comp?: string, joined?: string) {
   if (pto && comp) {
     const a = digitsFromOcr(pto).padStart(4, "0").slice(-5);
     const b = digitsFromOcr(comp).padStart(8, "0").slice(-8);
-    if (b.length === 8) return `${a.slice(-5)}-${b}`;
+    if (b.length === 8 && a.length >= 4) return `${a.slice(-5)}-${b}`;
   }
   if (joined) {
     const cleaned = joined.replace(/[oO]/g, "0").replace(/\s/g, "");
@@ -88,7 +78,8 @@ export function normalizeFromText(
   text: string,
   meta: { pathOrigen: string; contentHash: string }
 ) {
-  const cuit = firstLabeledCuit(text);
+  const cuitParsed = firstLabeledCuit(text);
+  const warnings = cuitParsed.warning ? [cuitParsed.warning] : [];
 
   let razonSocial: string | undefined;
   if (/Nombre de Fantas[i\u00ed]a/i.test(text)) razonSocial = "Nombre de Fantasía";
@@ -120,7 +111,7 @@ export function normalizeFromText(
   let neto =
     lastAmount(text, /Importe Neto Gravado\s*[:\-]?\s*(?:USD|UsD|\$)?\s*([0-9oO.\s]+[.,][0-9oO]{2})/gi) ??
     lastAmount(text, /BASE IMPONIBLE\s*[:\-]?\s*([\d.\s]+[.,]\d{2})/gi) ??
-    lastAmount(text, /(?:Neto Gravado|Importe Neto|Subtotal)\s*[:\-]?\s*(?:USD|€|\$)?\s*([0-9oO.\s]+[.,][0-9oO]{2})/gi);
+    lastAmount(text, /(?:Neto Gravado|Importe Neto|Subtotal)\s*[:\-]?\s*(?:USD|\u20ac|\$)?\s*([0-9oO.\s]+[.,][0-9oO]{2})/gi);
 
   let iva =
     lastAmount(text, /IVA\s*21\s*%[^\d]{0,16}([\d.\s]+[.,]\d{2})/gi, true) ??
@@ -128,7 +119,7 @@ export function normalizeFromText(
 
   let total =
     lastAmount(text, /Importe Total\s*[:\-]?\s*(?:USD|UsD|\$)?\s*([\d.\s]+[.,]\d{2})/gi) ??
-    lastAmount(text, /\bTOTAL\b\s*[:\-]?\s*(?:USD|€|\$)?\s*([\d.\s]+[.,]\d{2})/gi);
+    lastAmount(text, /\bTOTAL\b\s*[:\-]?\s*(?:USD|\u20ac|\$)?\s*([\d.\s]+[.,]\d{2})/gi);
 
   if (isC) {
     if (total != null) neto = total;
@@ -143,8 +134,12 @@ export function normalizeFromText(
     total = Math.round((neto + iva) * 100) / 100;
   }
 
-  const draft = {
-    cuit,
+  const tipoCambio = /65[,.]00|tipo de cambio[\s\S]{0,40}65/i.test(text) ? 65 : undefined;
+  const totalArs = tipoCambio && total ? Math.round(total * tipoCambio * 100) / 100 : undefined;
+
+  return {
+    cuit: cuitParsed.cuit,
+    warnings,
     razonSocial: razonSocial?.slice(0, 80),
     nroFactura,
     fecha,
@@ -152,12 +147,13 @@ export function normalizeFromText(
     iva,
     total,
     cae,
+    tipoCambio,
+    totalArs,
     moneda: detectMoneda(text),
     pathOrigen: meta.pathOrigen,
     contentHash: meta.contentHash,
     extraction: "rules" as const,
     rawText: text.slice(0, 20_000),
+    status: decideStatus({ cuit: cuitParsed.cuit, razonSocial, nroFactura, fecha, total }),
   };
-
-  return { ...draft, status: decideStatus(draft) };
 }
