@@ -1,0 +1,25 @@
+{
+  "id": "arca-c",
+  "note": "Factura C monotributo. IVA 0. Neto = total. CUIT impreso 20-12345678-3; OCR leyó 20-12345878-3.",
+  "rawText": "0 FACTURA Nombre de Fantasia c;p \"1 ORIGINAL ooo0-00000001 Fecha de Emision: 01/01/2025 Nonbre y Apellido Avenida 44 Nro. 12345 (oCo) La Plata Buenos Aires CUIT: 20-12345878-3 (0123) 15458-7860 Ingresos Brutos: 20-123458783 Responsable Monotributo Inicio de Actividades: Oi/1izoco Nombre: Cliente DNI: 28.123.123 Domicilio:   Direccicn Clierte Localidad: Ciudad Cliente Cond IVA; Consunidcr Final Provincia; Provincia Cliente Cond Venta: Conzado Telefono: Telefono Cliente Codigo Descripcion Cantidad P.Unitario Importe 1001 Producto Test 1,815.00 1,815.01 1002 Producto Tes: 2 3,820.00 3,830.01 1003 Producto Test 3 5.445.00 5.445,0J Subtotal: 10.620.00 Dto_JRecargo: 0.00 Total: 10.890,00 CAEN?: 1234567890 ARCA Fecha de Vto. de CAE: 11/01/2025 Comprobante Autorizado",
+  "expected": {
+    "cuit": "20-12345678-3",
+    "razonSocial": "Nombre de Fantasía",
+    "nroFactura": "0000-00000001",
+    "fecha": "01/01/2025",
+    "neto": 10890,
+    "iva": 0,
+    "total": 10890,
+    "moneda": "ARS",
+    "cae": "1234567890"
+  },
+  "expectedFromRawText": {
+    "cuit": null,
+    "warnings": ["cuit_checksum"],
+    "nroFactura": "0000-00000001",
+    "neto": 10890,
+    "iva": 0,
+    "total": 10890,
+    "moneda": "ARS"
+  }
+}

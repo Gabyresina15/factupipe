@@ -1,0 +1,15 @@
+{
+  "id": "holded-es",
+  "note": "Factura EU. Sin CUIT AR. partial es correcto.",
+  "rawText": "DreamWorks Studios Passeig Joan de Borbo 101 DRFAMWORKS Barcelona (08037), Barcelona, Espana SUDKS 614811987 Factura Recapitulativa #F190006 Fecha: 26/09/2019 Vencimiento: 27/09/2019 Joe Spaceman TOTAL 513.00€ X12473304 Jspaceman@space com CI Voladora 25 Barcelona (08022), Barcelona, Espana ConcePto PRECIO UNIDADES DTO., SUBTOTAL IVA TOTAL Curso Pilotaje Dron 98.35C 096 98.35€ 219 119.OOc Primera sesion (Pedido de venta 50190001) Dron X-182028 206.61€ 096 206.61€ 219 250.0o€ Dron con Camara 4K UHD (Pedido de venta 50190001) Curso Pilotaje Dron 98,35€ 096 98,.35€ 219 119OoC Segunda sesion (Pedido de venta 50190002) Casco de Seguridad 20.666 096 20.66€ 2196 25. ooc Talla M (Pedido de venta 50190002) BASE IMPONIBLE 423.97€ IVA 219 89,03€ TOTAL 513.0o€ Made in Holded",
+  "expected": {
+    "cuit": null,
+    "razonSocial": "DreamWorks Studios",
+    "nroFactura": "F190006",
+    "fecha": "26/09/2019",
+    "neto": 423.97,
+    "iva": 89.03,
+    "total": 513,
+    "moneda": "EUR"
+  }
+}
