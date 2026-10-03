@@ -5,11 +5,13 @@ import { normalizeFromText } from "./normalize.js";
 import { maybeEnrichWithLlm } from "./llm.js";
 import { upsertInvoice } from "./persist.js";
 
-export async function ingestFile(filePath: string) {
+export async function ingestFile(filePath: string, opts: { signal?: AbortSignal } = {}) {
   const abs = path.resolve(filePath);
   const hash = await contentHash(abs);
   const { text, source } = await extractText(abs);
 
+  // Si el job ya venció por timeout, el resultado tardío no se escribe.
+  opts.signal?.throwIfAborted();
   if (!text) {
     return upsertInvoice({
       pathOrigen: abs,
@@ -24,5 +26,6 @@ export async function ingestFile(filePath: string) {
 
   const rules = normalizeFromText(text, { pathOrigen: abs, contentHash: hash });
   const finalDoc = await maybeEnrichWithLlm({ ...rules, extractSource: source });
+  opts.signal?.throwIfAborted();
   return upsertInvoice(finalDoc);
 }

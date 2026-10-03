@@ -148,7 +148,7 @@ export async function completeJson(prompt: string): Promise<Record<string, unkno
       modelId: llmModelId!,
       history,
       stream: true,
-      maxTokens: 320,
+      generationParams: { predict: 320 },
     });
 
     let full = "";

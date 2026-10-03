@@ -45,7 +45,7 @@ export async function maybeEnrichWithLlm(rules: Record<string, unknown>) {
       ...rules,
       iva,
       razonSocial: rules.razonSocial ?? merchant,
-      total: llmTotal ?? rules.total,
+      total: rules.total ?? llmTotal,
       extraction: "hybrid",
     };
     return { ...merged, status: decideStatus(merged) };

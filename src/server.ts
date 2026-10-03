@@ -1,5 +1,6 @@
 import "dotenv/config";
 import express from "express";
+import mongoose from "mongoose";
 import cors from "cors";
 import multer from "multer";
 import path from "node:path";
@@ -55,6 +56,7 @@ app.post("/api/upload", upload.single("factura"), async (req, res) => {
 });
 
 app.get("/jobs/:id", async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: "id inválido" });
   const job = await JobModel.findById(req.params.id).lean();
   if (!job) return res.status(404).json({ error: "not found" });
   res.json(job);
