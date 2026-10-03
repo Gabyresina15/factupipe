@@ -11,10 +11,10 @@
     "watch": "tsx src/cli.ts watch",
     "demo": "tsx src/cli.ts demo",
     "health": "tsx src/cli.ts health",
-    "test": "tsx --test src/normalize.test.ts"
+    "test": "tsx --test src/*.test.ts"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.21"
   },
   "dependencies": {
     "@qvac/sdk": "^0.17.1",

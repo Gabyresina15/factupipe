@@ -1,6 +1,6 @@
 {
   "id": "bit-excel",
-  "note": "Screenshot de planilla. El nro 0010-00000001 no está en el rawText. El CUIT impreso es el del cliente 20-39380259-3; el OCR dio 20939802593.",
+  "note": "Screenshot de planilla. El nro 0010-00000001 no está en el rawText. 20939802593 aparece sin etiqueta CUIT: el normalizer no lo toma y no hay warning. No leer números sueltos de 11 dígitos: ese valor pasa módulo 11 y sería un CUIT inventado.",
   "rawText": "8 0 ' 0 invoice ARCHIVO INICIO INSERTAR DISERO DE PAGINA FORMULAS DATOS REVISAR VISTA F35  ~ fr =SI(Cl=\"A\";F31+F33;F31) invoice-template xlsm 3lT Ingenieria A FACTURA Italia, 945 Buenos Aires; CP 1712 NRO Q=lQ-QQQQQQ01 Euscar clierte =7 Telefono: +54(11) 2092-3168 FECHA 12/5/2020 Padfon  Cel: +54(911) 6937-5707 W bitingenieriacomal Generar Factura CLIENTE Electronica 20939802593 MiRANDA CORDOvI KBEL Italia 945,CaSTeLAR Buenos Kires IvA Responsable Inscripto DESCRIPCION cantidac precio MoNTo rouseInalambrico 398 00 Teclado Inalambrico 2.272,00 28 & n 8 & 28 Subtotal 2670,00 Comentarios Wex 560,70 TOTAL 3.230.70 Factura Help",
   "expected": {
     "cuit": "20-39380259-3",
@@ -10,11 +10,12 @@
     "neto": 2670,
     "iva": 560.7,
     "total": 3230.7,
-    "moneda": "ARS"
+    "moneda": "ARS",
+    "paperCuitUnverified": true
   },
   "expectedFromRawText": {
     "cuit": null,
-    "warnings": ["cuit_checksum"],
+    "warnings": [],
     "nroFactura": null,
     "fecha": "12/5/2020",
     "neto": 2670,
