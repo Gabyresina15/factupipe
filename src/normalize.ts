@@ -170,9 +170,10 @@ export function normalizeFromText(
     lastAmount(text, new RegExp(`BASE IMPONIBLE\\s*[:\\-]?\\s*${money}`, "gi")) ??
     lastAmount(text, new RegExp(`(?:Neto Gravado|Importe Neto|Subtotal)\\s*[:\\-]?\\s*(?:USD|\\u20ac|\\$)?\\s*${money}`, "gi"));
 
+  const sinContenido = text.replace(/IVA\s+Contenid[oa][^\d]{0,12}[\d.\s]+[.,]\d{2}/gi, " ");
   let iva =
-    lastAmount(text, /IVA\s*21\s*%[^\d]{0,16}([\d.\s]+[.,]\d{2})/gi, true) ??
-    lastAmount(text, /IVA\s*(?:\d{1,2}\s*%|\d{2,3}\s+)?[^\d]{0,12}([\d.\s]+[.,]\d{2})/gi, true);
+    lastAmount(sinContenido, /IVA\s*21\s*%[^\d]{0,16}([\d.\s]+[.,]\d{2})/gi, true) ??
+    lastAmount(sinContenido, /IVA\s*(?:\d{1,2}\s*%|\d{2,3}\s+)?[^\d]{0,12}([\d.\s]+[.,]\d{2})/gi, true);
 
   let total =
     lastAmount(text, new RegExp(`Importe Total\\s*[:\\-]?\\s*(?:USD|UsD|\\$)?\\s*${money}`, "gi")) ??
