@@ -1,6 +1,6 @@
 {
   "id": "lider-a-usd",
-  "note": "Factura A en USD. El total fiscal es 12100 USD. 786500 es derivado (tipoCambio 65). CUIT impreso 30-00000000-7; OCR 300o0c0o007.",
+  "note": "Factura A en USD. El total fiscal es 12100 USD. 786500 es derivado (tipoCambio 65). CUIT impreso 30-00000000-7; OCR 300o0c0o007. En el rawText el tipo de cambio sale '65 oo]j0' y la etiqueta 'canibic Coisnauode': no es legible con confianza, así que expectedFromRawText lleva tipoCambio y totalArs null. El papel (expected) dice 65 / 786500.",
   "rawText": "ORIGINAL A Lider Gestion FACTURA Cod- 01 de Sistemas Wynges Punto de Venta:   00010 Comp. Nro:   00oooo94 Razon Social: Cuit Juricica de Prueba Fecha de Emision:   13/10/2020 Domicilio Comercial: 8 De Diciembre Diciembre 153 CuIT: 300o0c0o007 Piso:PB Dpto:9 Ciuda Ingresos Brutos: Condicion frente al IVA: IVA Responsable Inscripto Fecha de Inicio de Actividades:   01/01/1900 CuIT: Zj0o0j0o0]1 Apellido Y Nornbrt Razon SocialPrueBA enpleADO Condicion Irente al IVA: IAResconsab € Inscniplo Domicilio Cornercial: Av De Kayo 567 Capla Federal, C udad 0e Bjenos Alles Condicion de venle Contado Releren cia Cornerciel una-felereicia-ccercialQe Codigo Produclo / Servicio Canlidad M~dide Piccio Unt (Uso) Kubtot iusdi Aaurot Gsunror uso picducto Uridec  ij001 0] 10j00 oc 1210] DJ Otros Tributos Moneda: USD Dolar Esladounidense Descripuioi Delan Inupone PeuRelde Iiplesio 2 Gananuas PenReldenva Importe Neto Gravado:UsD 1o0oo,00 Pen Rel Inoiescs EulCe Inauesusoletus IVA 27 -USd Impuesios Municipales Qoo IVA 21 -Ued 2100,00 Importe Otros Tributos: USD 0,00 IVA 10.5%-UsD 0,00 IVA 59-UiSd IVA 25%-UisD 0,00 IVA O%-UisD Importe Otros Tributos:UsD 0,00 Importe Total:UsD 12100,00 Eolalde F9ie CunlduanieEolsQuoentoledhdeGile Pesos Aigenunos Foaens  Unuoue canibic Coisnauode 65 oo]j0 ascenle & 786500,00 \"Leyenda Pag. 1/1 CAE N\": 70417054367476 oooop Fecha de Vto. de CAE: 23/10/2020 Comprobante Autorizado",
   "expected": {
     "cuit": "30-00000000-7",
@@ -17,13 +17,15 @@
   },
   "expectedFromRawText": {
     "cuit": null,
-    "warnings": ["cuit_checksum"],
+    "warnings": [
+      "cuit_checksum"
+    ],
     "nroFactura": "00010-00000094",
     "neto": 10000,
     "iva": 2100,
     "total": 12100,
     "moneda": "USD",
-    "tipoCambio": 65,
-    "totalArs": 786500
+    "tipoCambio": null,
+    "totalArs": null
   }
 }

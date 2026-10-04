@@ -46,17 +46,20 @@ Una línea JSON por factura en stdout, incluidas `skipped`, `failed` y `timeout`
 - No usa Redis ni una cola aparte del worker del proceso.
 - No tiene fine-tune.
 
-## Límites (B8 pendiente)
+## Límites (B8)
 
-- **Factura C:** IVA 0 y neto = total. Ningún test exige `iva: 0`.
-- **USD:** se guarda el total en USD, con `moneda: "USD"` (el golden lo testea). `totalArs` es derivado, pero `tipoCambio` hoy solo se detecta cuando vale 65.
+- **Letra del comprobante:** manda el código AFIP (`COD. 01/06/11`…), después "FACTURA A/B/C". Si no hay ninguno legible, "Responsable Monotributo" en el bloque del emisor (antes de los datos del receptor) indica C. Una Factura A/B a un receptor monotributista no se lee como C. Riesgo: un código de producto tipo "Cod. 12" antes del encabezado se leería como letra.
+- **Factura C:** IVA 0 y neto = total; un "IVA" leído en una C se descarta. Lo testean el golden arca-c y un caso sintético.
+- **USD:** `total` es el de USD y `moneda: "USD"`. `tipoCambio` sale solo de una etiqueta ("Tipo de cambio", "Cotización", "T.C.", "TC") seguida de un número limpio (`1.234,56`, `1234.56`, `65,00`). Si el número viene pegado a letras o seguido de basura de OCR, queda `null`: no se pliegan letras a dígitos. `totalArs = total × tipoCambio` (2 decimales) solo si existen los dos; en facturas ARS no se calcula.
+- **Golden Líder:** en el `rawText` el tipo de cambio sale `65 oo]j0` con la etiqueta ilegible, así que `tipoCambio` y `totalArs` quedan `null` (el papel dice 65 y 786500).
 - **EUR:** un `€` pegado al número no se detecta y la factura sale como ARS.
+- **Razón social:** sin etiqueta "Razón Social" puede quedar vacía; ya no hay nombres de empresas escritos en el código.
 
 ## Golden set
 
 4 casos en `golden/*.json`, con el `rawText` real de QVAC y el `expected` del papel.
 - La precisión no está publicada: todavía no hay un script que compare campo por campo, y dos de cuatro son plantilla.
-- `npm test` compara contra `expectedFromRawText` (CUIT, warnings, moneda, total), no contra `expected`.
+- `npm test` compara cada campo de `expectedFromRawText` (CUIT, warnings, número, fecha, neto, IVA, total, moneda, tipo de cambio, total en pesos), no contra `expected`.
 - arca-c y bit-excel: el CUIT impreso (`20-12345678-3` y `20-39380259-3`) no cierra módulo 11. El `expected` es `null`. El impreso queda en `cuitImpreso`, no se cuenta.
 
 ## Cómo correrlo

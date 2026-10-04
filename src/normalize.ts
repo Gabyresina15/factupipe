@@ -74,6 +74,57 @@ function closeRate(neto: number, iva: number) {
   return [0.105, 0.21, 0.27].some((x) => Math.abs(r - x) < 0.015);
 }
 
+// Letra del comprobante. Orden: código AFIP explícito > "FACTURA X" > emisor monotributista.
+// El código manda: una Factura A/B a un receptor monotributista no se lee como C.
+const COD_LETRA: Record<string, "A" | "B" | "C" | "M"> = {
+  "01": "A", "02": "A", "03": "A",
+  "06": "B", "07": "B", "08": "B",
+  "11": "C", "12": "C", "13": "C",
+  "51": "M", "52": "M", "53": "M",
+};
+const RECEPTOR = /\bCliente\b|Se[\u00f1n]or(?:es)?\b|Apellido\s+y\s+N|\bDNI\b/i;
+
+export function tipoComprobante(text: string): "A" | "B" | "C" | "M" | undefined {
+  const cod = text.match(/\bC[O\u00d3]D(?:IGO)?\.?\s*(?:N[\u00b0\u00ba.]?\s*)?[:\-]?\s*0?(\d{2})\b/i)?.[1];
+  if (cod && COD_LETRA[cod]) return COD_LETRA[cod];
+  const letra = text.match(/\bFACTURA\s+([ABCM])\b/)?.[1] as "A" | "B" | "C" | "M" | undefined;
+  if (letra) return letra;
+  // Sin código ni letra legibles: "Responsable Monotributo" cuenta solo si aparece en el bloque
+  // del emisor (antes de los datos del receptor). Un monotributista solo emite C.
+  const mono = text.search(/Responsable\s+Monotributo|Monotributista/i);
+  const receptor = text.search(RECEPTOR);
+  if (mono >= 0 && (receptor < 0 || mono < receptor)) return "C";
+  return undefined;
+}
+
+// Número de tipo de cambio sin plegar letras: 1.234,56 | 1,234.56 | 1234.56 | 1234,56 | 65,00 | 65.
+export function parseRate(raw: string): number | undefined {
+  let s = raw;
+  if (/^\d{1,3}(\.\d{3})+,\d+$/.test(s)) s = s.replace(/\./g, "").replace(",", ".");
+  else if (/^\d{1,3}(,\d{3})+\.\d+$/.test(s)) s = s.replace(/,/g, "");
+  else if (/^\d+,\d+$/.test(s)) s = s.replace(",", ".");
+  else if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, ""); // 1.234 = mil doscientos (AR)
+  else if (!/^\d+(\.\d+)?$/.test(s)) return undefined;
+  const n = Number(s);
+  return Number.isFinite(n) && n > 0 && n < 100_000 ? n : undefined;
+}
+
+const TC_LABEL =
+  /(?:tipo\s+de\s+cambio(?:\s+consignado)?(?:\s+de)?|cotizaci[o\u00f3]n(?:\s+(?:del?\s+)?(?:d[o\u00f3]lar|USD))?|\bT\.\s?C\.|\bTC\b)\s*[:=]?\s*(?:\$|ARS)?\s*(\d[\d.,]*\d|\d)(.{0,3})/gi;
+
+// Solo con etiqueta y número limpio. Si después del número viene algo que parece un dígito
+// mal leído (letra pegada, o "o", "l", "j", "]", "|" tras un espacio), no se adivina: null.
+// Así "65 oo]j0" de Líder y "6S,00" quedan null.
+export function parseTipoCambio(text: string): number | undefined {
+  for (const m of text.matchAll(TC_LABEL)) {
+    const after = m[2] ?? "";
+    if (/^[A-Za-z0-9\u00c0-\u017f]/.test(after) || /^\s*[oOlIj\]\[|]/.test(after)) continue;
+    const n = parseRate(m[1]);
+    if (n !== undefined) return n;
+  }
+  return undefined;
+}
+
 export function normalizeFromText(
   text: string,
   meta: { pathOrigen: string; contentHash: string }
@@ -89,8 +140,6 @@ export function normalizeFromText(
     const ing = text.match(/([A-Za-z0-9]{2,12})\s+Ingenier[i\u00ed]a/i);
     if (ing) razonSocial = `${ing[1]} Ingeniería`;
   }
-  if (!razonSocial && /L[i\u00ed]der Gesti[o\u00f3]n/i.test(text)) razonSocial = "Líder Gestión";
-  if (!razonSocial && /DreamWorks Studios/i.test(text)) razonSocial = "DreamWorks Studios";
 
   const pto = text.match(/Punto de Venta\s*[:\-]?\s*([0-9oO]{4,5})/i)?.[1];
   const comp = text.match(/Comp\.?\s*Nro\.?\s*[:\-]?\s*([0-9oO]{6,8})/i)?.[1];
@@ -105,8 +154,7 @@ export function normalizeFromText(
 
   const cae = text.match(/CAE[^0-9]{0,16}(\d{10,14})/i)?.[1];
 
-  const isC =
-    /\bFACTURA\s*C\b|C[\u00d3O]D\.?\s*11|Responsable Monotributo|Monotribut/i.test(text);
+  const isC = tipoComprobante(text) === "C";
 
   let neto =
     lastAmount(text, /Importe Neto Gravado\s*[:\-]?\s*(?:USD|UsD|\$)?\s*([0-9oO.\s]+[.,][0-9oO]{2})/gi) ??
@@ -121,9 +169,10 @@ export function normalizeFromText(
     lastAmount(text, /Importe Total\s*[:\-]?\s*(?:USD|UsD|\$)?\s*([\d.\s]+[.,]\d{2})/gi) ??
     lastAmount(text, /\bTOTAL\b\s*[:\-]?\s*(?:USD|\u20ac|\$)?\s*([\d.\s]+[.,]\d{2})/gi);
 
+  // Factura C no discrimina IVA: cualquier "IVA" leído es ruido (p. ej. "Cond. IVA").
   if (isC) {
     if (total != null) neto = total;
-    iva = iva ?? 0;
+    iva = 0;
   }
 
   if (neto != null && total != null && iva == null && !isC) {
@@ -134,8 +183,11 @@ export function normalizeFromText(
     total = Math.round((neto + iva) * 100) / 100;
   }
 
-  const tipoCambio = /65[,.]00|tipo de cambio[\s\S]{0,40}65/i.test(text) ? 65 : undefined;
-  const totalArs = tipoCambio && total ? Math.round(total * tipoCambio * 100) / 100 : undefined;
+  // total queda en la moneda del comprobante; totalArs es derivado y solo si hay ambos.
+  const moneda = detectMoneda(text);
+  const tipoCambio = moneda === "ARS" ? undefined : parseTipoCambio(text);
+  const totalArs =
+    tipoCambio !== undefined && total != null ? Math.round(total * tipoCambio * 100) / 100 : undefined;
 
   return {
     cuit: cuitParsed.cuit,
@@ -149,7 +201,7 @@ export function normalizeFromText(
     cae,
     tipoCambio,
     totalArs,
-    moneda: detectMoneda(text),
+    moneda,
     pathOrigen: meta.pathOrigen,
     contentHash: meta.contentHash,
     extraction: "rules" as const,
