@@ -15,6 +15,11 @@ export function parseMoney(raw?: string): number | undefined {
     .replace(/\s/g, "")
     .trim();
   if (!s) return undefined;
+  // 10.890.00 y 10.820.00 (OCR de 10.890,00): el último grupo de 2 es decimal.
+  if (/^\d{1,3}(\.\d{3})+\.\d{2}$/.test(s)) {
+    const last = s.lastIndexOf(".");
+    return Number(s.slice(0, last).replace(/\./g, "") + "." + s.slice(last + 1));
+  }
   if (/^\d{1,3}(\.\d{3})+,\d{2}$/.test(s)) return Number(s.replace(/\./g, "").replace(",", "."));
   if (/^\d{1,3}(,\d{3})+\.\d{2}$/.test(s)) return Number(s.replace(/,/g, ""));
   if (/^\d{1,3}(\.\d{3})+\.\d{2}$/.test(s)) {
@@ -156,18 +161,19 @@ export function normalizeFromText(
 
   const isC = tipoComprobante(text) === "C";
 
+  const money = "([0-9oO]{1,3}(?:[.,][0-9oO]{3})+[.,][0-9oO]{2}|[0-9oO]+[.,][0-9oO]{2})";
   let neto =
-    lastAmount(text, /Importe Neto Gravado\s*[:\-]?\s*(?:USD|UsD|\$)?\s*([0-9oO.\s]+[.,][0-9oO]{2})/gi) ??
-    lastAmount(text, /BASE IMPONIBLE\s*[:\-]?\s*([\d.\s]+[.,]\d{2})/gi) ??
-    lastAmount(text, /(?:Neto Gravado|Importe Neto|Subtotal)\s*[:\-]?\s*(?:USD|\u20ac|\$)?\s*([0-9oO.\s]+[.,][0-9oO]{2})/gi);
+    lastAmount(text, new RegExp(`Importe Neto Gravado\\s*[:\\-]?\\s*(?:USD|UsD|\\$)?\\s*${money}`, "gi")) ??
+    lastAmount(text, new RegExp(`BASE IMPONIBLE\\s*[:\\-]?\\s*${money}`, "gi")) ??
+    lastAmount(text, new RegExp(`(?:Neto Gravado|Importe Neto|Subtotal)\\s*[:\\-]?\\s*(?:USD|\\u20ac|\\$)?\\s*${money}`, "gi"));
 
   let iva =
     lastAmount(text, /IVA\s*21\s*%[^\d]{0,16}([\d.\s]+[.,]\d{2})/gi, true) ??
     lastAmount(text, /IVA\s*(?:\d{1,2}\s*%|\d{2,3}\s+)?[^\d]{0,12}([\d.\s]+[.,]\d{2})/gi, true);
 
   let total =
-    lastAmount(text, /Importe Total\s*[:\-]?\s*(?:USD|UsD|\$)?\s*([\d.\s]+[.,]\d{2})/gi) ??
-    lastAmount(text, /\bTOTAL\b\s*[:\-]?\s*(?:USD|\u20ac|\$)?\s*([\d.\s]+[.,]\d{2})/gi);
+    lastAmount(text, new RegExp(`Importe Total\\s*[:\\-]?\\s*(?:USD|UsD|\\$)?\\s*${money}`, "gi")) ??
+    lastAmount(text, new RegExp(`\\bTOTAL\\b\\s*[:\\-]?\\s*(?:USD|\\u20ac|\\$)?\\s*${money}`, "gi"));
 
   // Factura C no discrimina IVA: cualquier "IVA" leído es ruido (p. ej. "Cond. IVA").
   if (isC) {

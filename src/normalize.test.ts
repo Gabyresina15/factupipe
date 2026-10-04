@@ -100,3 +100,17 @@ test("USD sin tipo de cambio legible: totalArs null; ARS ignora cotizaciones", (
   assert.equal(ars.tipoCambio, undefined);
   assert.equal(ars.totalArs, undefined);
 });
+
+test("importe AR con punto de miles y punto decimal de OCR", async () => {
+  const { parseMoney, normalizeFromText } = await import("./normalize.js");
+  assert.equal(parseMoney("10.890.00"), 10890);
+  assert.equal(parseMoney("10.820.0o"), 10820);
+  const got = normalizeFromText(
+    "FACTURA B COD. 06 CUIT: 20-12345878-3 Subtotal: 10.820.0o Total: $ 10.890.00 IVA Contenido: $ 1.890,00",
+    { pathOrigen: "b", contentHash: "a".repeat(64) }
+  );
+  assert.equal(got.cuit, undefined);
+  assert.deepEqual(got.warnings, ["cuit_checksum"]);
+  assert.equal(got.total, 10890);
+  assert.equal(got.neto, 10820);
+});
