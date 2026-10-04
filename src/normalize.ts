@@ -141,6 +141,9 @@ export function normalizeFromText(
   if (/Nombre de Fantas[i\u00ed]a/i.test(text)) razonSocial = "Nombre de Fantasía";
   const razonLabeled = text.match(/Raz[o\u00f3]n Social\s*[:\-]?\s*(.+?)(?=Fecha|Domicilio|CUIT|Condici|Punto de Venta|$)/i);
   if (!razonSocial && razonLabeled?.[1]) razonSocial = takeUntilLabel(razonLabeled[1]);
+  if (razonSocial) {
+    razonSocial = razonSocial.split(/\b(?:Avenida|Avda|Calle|Domicilio)\b/i)[0].trim();
+  }
   if (!razonSocial) {
     const ing = text.match(/([A-Za-z0-9]{2,12})\s+Ingenier[i\u00ed]a/i);
     if (ing) razonSocial = `${ing[1]} Ingeniería`;
