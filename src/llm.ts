@@ -1,5 +1,6 @@
 import { decideStatus } from "./schema.js";
 import { completeJson, qvacReady, initQvac } from "./qvac.js";
+import type { Timings } from "./metrics.js";
 
 function asNum(v: unknown): number | undefined {
   if (typeof v === "number" && Number.isFinite(v)) return v;
@@ -22,13 +23,17 @@ TEXTO:
 ${rawText}`;
 }
 
-export async function maybeEnrichWithLlm(rules: Record<string, unknown>) {
+export async function maybeEnrichWithLlm(rules: Record<string, unknown>, timings?: Timings) {
   const raw = String(rules.rawText ?? "");
   if (!raw.trim()) return { ...rules, extraction: "rules" };
 
   try {
     if (!qvacReady()) await initQvac();
+    if (!qvacReady()) return { ...rules, extraction: "rules" };
+    const t0 = Date.now();
+    if (timings) timings.llmCalled = true;
     const parsed = await completeJson(buildPrompt(raw));
+    if (timings) timings.llmMs = Date.now() - t0;
     if (!parsed) {
       console.error("[QVAC LLM] no devolvió JSON — se conserva el resultado de reglas");
       return { ...rules, extraction: "rules" };

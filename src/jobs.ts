@@ -1,6 +1,7 @@
 import { JobModel, type JobErrorCode } from "./models/Job.js";
 import { InvoiceModel } from "./models/Invoice.js";
 import { ingestFile } from "./pipeline.js";
+import { logInvoice, newTimings } from "./metrics.js";
 
 const TIMEOUT_MS = Number(process.env.JOB_TIMEOUT_MS ?? 120_000);
 let chain: Promise<unknown> = Promise.resolve();
@@ -45,10 +46,11 @@ async function runJob(jobId: string) {
   await job.save();
 
   const abort = new AbortController();
+  const timings = newTimings();
   let timer: NodeJS.Timeout | undefined;
   try {
     const result = await Promise.race([
-      ingestFile(job.pathOrigen, { signal: abort.signal }),
+      ingestFile(job.pathOrigen, { signal: abort.signal, jobId: String(job._id), timings }),
       new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
           abort.abort();
@@ -67,6 +69,16 @@ async function runJob(jobId: string) {
   } catch (e) {
     job.state = "failed";
     job.errorCode = e instanceof JobError ? e.code : "ingest_error";
+    if (job.errorCode === "timeout") {
+      logInvoice({
+        jobId: String(job._id),
+        outcome: "failed",
+        errorCode: "timeout",
+        timings,
+        totalMs: Date.now() - job.startedAt!.getTime(),
+        fields: {},
+      });
+    }
     job.error = e instanceof Error ? e.message : String(e);
     job.finishedAt = new Date();
     await job.save();

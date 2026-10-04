@@ -1,5 +1,7 @@
 import { keyFieldScore } from "./schema.js";
 
+// Ventana en memoria del proceso: se pierde al reiniciar. totalMs = tiempo de la factura
+// dentro del worker (hash + texto/OCR + LLM + upsert), sin la espera en cola.
 const samples: number[] = [];
 
 function p95(values: number[]) {
@@ -9,28 +11,40 @@ function p95(values: number[]) {
   return sorted[idx];
 }
 
+export type Timings = { ocrMs: number; llmMs: number; llmCalled: boolean; extractSource?: string };
+
+export const newTimings = (): Timings => ({ ocrMs: 0, llmMs: 0, llmCalled: false });
+
 export function logInvoice(event: {
-  contentHash: string;
-  status: string;
-  extraction: string;
-  extractSource?: string;
-  ocrMs: number;
-  llmMs: number;
+  jobId?: string;
+  contentHash?: string;
+  outcome: "done" | "failed";
+  errorCode?: string;
+  skipped?: boolean;
+  status?: string;
+  extraction?: string;
+  timings: Timings;
+  totalMs: number;
   fields: Record<string, unknown>;
 }) {
   const score = keyFieldScore(event.fields);
-  const totalMs = event.ocrMs + event.llmMs;
-  samples.push(totalMs);
+  samples.push(event.totalMs);
   if (samples.length > 200) samples.shift();
   const line = {
     msg: "invoice",
+    ts: new Date().toISOString(),
+    jobId: event.jobId,
     contentHash: event.contentHash,
+    outcome: event.outcome,
+    errorCode: event.errorCode,
+    skipped: event.skipped ?? false,
     status: event.status,
     extraction: event.extraction,
-    extractSource: event.extractSource,
-    ocrMs: event.ocrMs,
-    llmMs: event.llmMs,
-    totalMs,
+    extractSource: event.timings.extractSource,
+    ocrMs: event.timings.ocrMs,
+    llmCalled: event.timings.llmCalled,
+    llmMs: event.timings.llmMs,
+    totalMs: event.totalMs,
     fieldsHit: score.hit,
     fieldsPct: Math.round(score.pct),
     p95Ms: p95(samples),
