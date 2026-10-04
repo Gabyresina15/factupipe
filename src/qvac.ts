@@ -82,7 +82,16 @@ export async function ocrImage(imagePath: string): Promise<string> {
   if (!ocrModelId) throw new Error("OCR QVAC no listo");
 
   const clean = path.join(tmpdir(), `factupipe-${Date.now()}-${Math.random().toString(16).slice(2)}.jpg`);
-  await sharp(imagePath).rotate().jpeg({ quality: 92 }).toFile(clean);
+  const meta = await sharp(imagePath).metadata();
+  const width = Math.min((meta.width ?? 1200) * 2, 2400);
+  await sharp(imagePath)
+    .rotate()
+    .resize({ width, withoutEnlargement: false })
+    .grayscale()
+    .normalize()
+    .sharpen()
+    .jpeg({ quality: 92 })
+    .toFile(clean);
 
   try {
     return await exclusive(async () => {
