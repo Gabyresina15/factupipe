@@ -3,7 +3,7 @@
   "version": "1.1.0",
   "private": true,
   "type": "module",
-  "description": "FactuPipe: PDF/imagen factura AR → JSON → Mongo. Reglas primero, QVAC local (LLM+OCR) de fallback.",
+  "description": "FactuPipe: PDF/imagen factura AR \u2192 JSON \u2192 Mongo. Reglas primero, QVAC local (LLM+OCR) de fallback.",
   "scripts": {
     "dev": "tsx src/server.ts",
     "ingest": "tsx src/cli.ts ingest",
@@ -11,7 +11,8 @@
     "watch": "tsx src/cli.ts watch",
     "demo": "tsx src/cli.ts demo",
     "health": "tsx src/cli.ts health",
-    "test": "tsx --test src/*.test.ts"
+    "test": "tsx --test src/*.test.ts",
+    "embed:ingest": "tsx scripts/ingest-embeddings.ts"
   },
   "engines": {
     "node": ">=22.21"
